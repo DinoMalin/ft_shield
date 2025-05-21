@@ -19,7 +19,7 @@ char *clean_join(char *s1, char *s2) {
 	return tmp;
 }
 
-int init(struct sockaddr_in *addr) {
+int init_socket(struct sockaddr_in *addr) {
 	int sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		DEBUG("socket does not work");
@@ -42,13 +42,61 @@ int init(struct sockaddr_in *addr) {
 	return sock;
 }
 
+bool new_connection(
+	int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev) {
+	socklen_t len = sizeof(struct sockaddr);
+	int conn = accept(sock, (struct sockaddr*)addr, &len);
+	if (conn < 0) {
+		DEBUG("accept does not work");
+		return false;
+	}
+
+	printf("New connection !\n");
+	ev->events = EPOLLIN;
+	ev->data.fd = conn;
+	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn, ev) < 0) {
+		DEBUG("epoll_ctl does not work");
+		return false;
+	}
+
+	return true;
+}
+
+void disconnect_client(int fd, int epollfd, struct epoll_event *ev) {
+	printf("Client disconnected\n");
+	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, ev) < 0)
+		DEBUG("epoll_ctl does not work");
+}
+
+char *readline(int fd) {
+	char *cmd = ft_strdup("");
+	char buff[BUFFER_SIZE] = {};
+
+	while (1) {
+		int ret = recv(fd, buff, BUFFER_SIZE-1, MSG_DONTWAIT);
+		if (ret == 0) {
+			free(cmd);
+			return NULL;
+		} else if (ret > 0) {
+			buff[ret] = 0;
+			cmd = clean_join(cmd, buff);
+		} else {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				return cmd;
+			}
+			free(cmd);
+			return NULL;
+		}
+	}
+
+	return cmd;
+}
+
 int main() {
 	struct sockaddr_in addr = {};
 	struct epoll_event ev, events[MAX_CLIENTS];
-	socklen_t len = sizeof(struct sockaddr);
-	char *cmd = ft_strdup("");
 
-	int sock = init(&addr);
+	int sock = init_socket(&addr);
 	if (!sock)
 		return 0;
 
@@ -74,44 +122,18 @@ int main() {
 		}
 
 		for (int n = 0; n < nfds; n++) {
-			if (events[n].data.fd == sock) { // new client
-				int conn = accept(sock, (struct sockaddr*) &addr, &len);
-				if (conn < 0) {
-					DEBUG("accept does not work");
-					return 0;
-				}
-
-				printf("New connection !\n");
-				ev.events = EPOLLIN;
-				ev.data.fd = conn;
-				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn, &ev) < 0) {
-					DEBUG("epoll_ctl does not work");
-					return 0;
-				}
+			int fd = events[n].data.fd;
+			if (fd == sock) {
+				new_connection(sock, epollfd, &addr, &ev);
 			} else {
-				char buff[BUFFER_SIZE] = {};
-
-				while (1) {
-					int ret = recv(events[n].data.fd, buff, BUFFER_SIZE-1, MSG_DONTWAIT);
-					if (ret < 0) {
-						if (errno == EAGAIN || errno == EWOULDBLOCK) {
-							printf("cmd: [%s]\n", cmd);
-						}
-						free(cmd);
-						cmd = ft_strdup("");
-						break;
-					} else if (ret == 0) {
-						printf("Client disconnected\n");
-						if (epoll_ctl(epollfd, EPOLL_CTL_DEL, events[n].data.fd, &ev) < 0) {
-							DEBUG("epoll_ctl does not work");
-							return 0;
-						}
-						break;
-					} else {
-						buff[ret] = 0;
-						cmd = clean_join(cmd, buff);
-					}
+				char *cmd = readline(fd);
+				if (!cmd) {
+					disconnect_client(fd, epollfd, &ev);
 				}
+
+				printf("cmd: %s", cmd);
+				// do something with the command
+				free(cmd);
 			}
 		}
 	}
