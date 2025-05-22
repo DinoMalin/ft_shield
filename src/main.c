@@ -12,7 +12,7 @@
 
 #define DEBUG printf
 #define MAX_CLIENTS 3
-#define PORT 6970
+#define PORT 6969
 
 char *clean_join(char *s1, char *s2) {
 	char *tmp = ft_strjoin(s1, s2);
@@ -111,6 +111,8 @@ int main() {
 	struct sockaddr_in addr = {};
 	struct epoll_event ev, events[MAX_CLIENTS];
 
+	bool shell = false;
+
 	int sock = init_socket(&addr);
 	if (!sock)
 		return 0;
@@ -141,43 +143,21 @@ int main() {
 			if (fd == sock) {
 				new_connection(sock, epollfd, &addr, &ev);
 			} else {
-				char *cmd = readline(fd);
-				if (!cmd) {
-					disconnect_client(fd, epollfd, &ev);
+				if (shell) {
+					continue;
 				}
-
-				int pipefd[2];
-				if (pipe(pipefd) < 0) {
-					DEBUG("pipe does not work");
-					return 0;
-				}
+				shell = true;
 				int pid = fork();
 
 				if (pid < 0) {
-					DEBUG("pipe does not work");
+					DEBUG("fork does not work");
 					return 0;
 				} else if (!pid) {
-					close(pipefd[0]);
-					if (dup2(pipefd[1], 1) < 0) { // have to find a way to make the stdin work too
-						DEBUG("dup2 does not work");
-						exit(0);
-					}
-					close(pipefd[1]);
-					execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
-
-					free(cmd);
-					close(sock);
-					exit(0);
+					dup2(fd, 0);
+					dup2(fd, 1);
+					dup2(fd, 2);
+					execl("/bin/sh", "sh", (char *) NULL);
 				}
-				close(pipefd[1]);
-
-				char *res = get_file(pipefd[0]);
-				if (res) {
-					send(fd, res, ft_strlen(res), 0);
-				}
-
-				free(cmd);
-				free(res);
 			}
 		}
 	}
