@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/wait.h>
 #include "libft.h"
 
 #define DEBUG printf
@@ -17,6 +18,20 @@ char *clean_join(char *s1, char *s2) {
 	char *tmp = ft_strjoin(s1, s2);
 	free(s1);
 	return tmp;
+}
+
+char *get_file(int fd) {
+	char *l = NULL;
+	char *res = ft_strdup("");
+
+	do {
+		free(l);
+		l = get_next_line(fd);
+		if (l)
+			res = clean_join(res, l);
+	} while (l);
+
+	return res;
 }
 
 int init_socket(struct sockaddr_in *addr) {
@@ -131,9 +146,38 @@ int main() {
 					disconnect_client(fd, epollfd, &ev);
 				}
 
-				printf("cmd: %s", cmd);
-				// do something with the command
+				int pipefd[2];
+				if (pipe(pipefd) < 0) {
+					DEBUG("pipe does not work");
+					return 0;
+				}
+				int pid = fork();
+
+				if (pid < 0) {
+					DEBUG("pipe does not work");
+					return 0;
+				} else if (!pid) {
+					close(pipefd[0]);
+					if (dup2(pipefd[1], 1) < 0) { // have to find a way to make the stdin work too
+						DEBUG("dup2 does not work");
+						exit(0);
+					}
+					close(pipefd[1]);
+					execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
+
+					free(cmd);
+					close(sock);
+					exit(0);
+				}
+				close(pipefd[1]);
+
+				char *res = get_file(pipefd[0]);
+				if (res) {
+					send(fd, res, ft_strlen(res), 0);
+				}
+
 				free(cmd);
+				free(res);
 			}
 		}
 	}
