@@ -1,39 +1,4 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/wait.h>
-#include "libft.h"
-
-#define DEBUG printf
-#define MAX_CLIENTS 3
-#define PORT 6970
-#define HASHED_PASSWORD 1340397520672655617UL
-
-#define FNV_OFFSET 14695981039346656037UL
-#define FNV_PRIME 1099511628211UL
-
-#define HELP							\
-"?		show help\n"					\
-"shell	spawn remote shell on 4242\n"
-
-typedef enum {
-	CLI,
-	PASSWORD,
-	SHELL
-} State;
-
-typedef struct {
-	int fd;
-	bool logged;
-} Client;
-
-void add_client(Client *clients, int fd);
+#include "ft_shield.h"
 
 // Return 64-bit FNV-1a hash for a given password. See:
 // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
@@ -52,57 +17,8 @@ char *clean_join(char *s1, char *s2) {
 	return tmp;
 }
 
-int init_socket(struct sockaddr_in *addr) {
-	int sock = socket(PF_INET, SOCK_STREAM, 0);
-	if (sock < 0) {
-		DEBUG("socket does not work");
-		return 0;
-	}
-
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = htonl(INADDR_ANY);
-	addr->sin_port = htons(PORT);
-
-	if (bind(sock, (struct sockaddr*)addr, sizeof(struct sockaddr)) < 0) {
-		DEBUG("bind does not work");
-		return 0;
-	}
-
-	if (listen(sock, MAX_CLIENTS) < 0) {
-		DEBUG("listen does not work");
-		return 0;
-	}
-	return sock;
-}
-
-int new_connection(
-	int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev) {
-	socklen_t len = sizeof(struct sockaddr);
-	int fd = accept(sock, (struct sockaddr*)addr, &len);
-	if (fd < 0) {
-		DEBUG("accept does not work");
-		return -1;
-	}
-
-	ev->events = EPOLLIN|EPOLLRDHUP;
-	ev->data.fd = fd;
-	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, ev) < 0) {
-		DEBUG("epoll_ctl does not work");
-		return -1;
-	}
-
-	DEBUG("New connection !\n");
-	return fd;
-}
-
-void disconnect_client(Client *client, int epollfd, struct epoll_event *ev) {
-	DEBUG("Client disconnected !\n");
-	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, client->fd, ev) < 0)
-		DEBUG("epoll_ctl does not work");
-	close(client->fd);
-
-	client->fd = -1;
-	client->logged = false;
+void putstr(int fd, char *s) {
+	send(fd, s, ft_strlen(s), MSG_NOSIGNAL);
 }
 
 char *readline(int fd) {
@@ -129,10 +45,6 @@ char *readline(int fd) {
 	return cmd;
 }
 
-void putstr(int fd, char *s) {
-	send(fd, s, ft_strlen(s), MSG_NOSIGNAL);
-}
-
 void sh(Client *client, int epollfd, struct epoll_event *ev) {
 	int pid = fork();
 
@@ -147,29 +59,6 @@ void sh(Client *client, int epollfd, struct epoll_event *ev) {
 		wait(NULL);
 		disconnect_client(client, epollfd, ev);
 	}
-}
-
-void init_clients(Client *clients) {
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		clients[i].fd = -1;
-	}
-}
-
-void add_client(Client *clients, int fd) {
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		if (clients[i].fd == -1) {
-			clients[i].fd = fd;
-			return;
-		}
-	}
-}
-
-Client *get_client(Client *clients, int fd) {
-	for (int i = 0; i < MAX_CLIENTS; i++) {
-		if (clients[i].fd == fd)
-			return clients+i;
-	}
-	return NULL;
 }
 
 void check_password(Client *client, char *line) {

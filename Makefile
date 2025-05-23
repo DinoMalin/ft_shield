@@ -11,7 +11,7 @@ LFLAGS =	-Llib -lft
 
 SRC_DIR = src/
 OBJ_DIR = obj/
-FILES =	main
+FILES =	main client_utils server_utils
 
 SRCS = $(addprefix $(SRC_DIR), $(addsuffix .c, $(FILES)))
 OBJS = $(addprefix $(OBJ_DIR), $(addsuffix .o, $(FILES)))
