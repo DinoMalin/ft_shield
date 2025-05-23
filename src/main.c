@@ -12,7 +12,7 @@
 
 #define DEBUG printf
 #define MAX_CLIENTS 3
-#define PORT 6969
+#define PORT 6970
 #define HASHED_PASSWORD 1340397520672655617UL
 
 #define FNV_OFFSET 14695981039346656037UL
@@ -133,17 +133,20 @@ void putstr(int fd, char *s) {
 	send(fd, s, ft_strlen(s), MSG_NOSIGNAL);
 }
 
-bool sh(int fd) {
+void sh(Client *client, int epollfd, struct epoll_event *ev) {
 	int pid = fork();
 
 	if (!pid) {
-		dup2(fd, 0);
-		dup2(fd, 1);
-		dup2(fd, 2);
-		execl("/bin/sh", "sh", (char *) NULL);
-	}
+		dup2(client->fd, 0);
+		dup2(client->fd, 1);
+		dup2(client->fd, 2);
 
-	return true;
+		execve("/bin/bash", (char*[]){"/bin/sh", NULL}, NULL);
+		disconnect_client(client, epollfd, ev);
+	} else {
+		wait(NULL);
+		disconnect_client(client, epollfd, ev);
+	}
 }
 
 void init_clients(Client *clients) {
@@ -232,7 +235,8 @@ int main() {
 					check_password(client, line);
 					if (client->logged && shell) {
 						shell = false;
-						sh(client->fd);
+						sh(client, epollfd, &ev);
+						free(line);
 						continue;
 					}
 				} else if (!ft_strcmp(line, "shell\n")) {
@@ -241,6 +245,8 @@ int main() {
 				} else if (!ft_strcmp(line, "?\n")) {
 					putstr(client->fd, HELP);
 				}
+
+				free(line);
 			}
 		}
 	}
