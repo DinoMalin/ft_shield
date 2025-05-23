@@ -1,4 +1,5 @@
 #include "ft_shield.h"
+#include "errno.h"
 
 int nb_clients = 0;
 
@@ -11,12 +12,6 @@ static uint64_t fnv1a(const char* key) {
         hash *= FNV_PRIME;
     }
     return hash;
-}
-
-void sig_handler(int code) {
-	if (code == SIGUSR1) {
-		nb_clients--;
-	}
 }
 
 char *clean_join(char *s1, char *s2) {
@@ -53,8 +48,7 @@ char *readline(int fd) {
 	return cmd;
 }
 
-void sh(Client *client, int epollfd, struct epoll_event *ev) {
-	int pid = getpid();
+void sh(Client *client, int pipefd) {
 	if (!fork()) {
 		int pid_child = fork();
 		if (!pid_child) {
@@ -65,9 +59,9 @@ void sh(Client *client, int epollfd, struct epoll_event *ev) {
 			execve("/bin/bash", (char*[]){"/bin/sh", NULL}, NULL);
 		} else {
 			waitpid(pid_child, NULL, 0);
-			kill(pid, SIGUSR1);
-			disconnect_client(client, epollfd, ev);
+			write(pipefd, &client->fd, sizeof(int));
 		}
+		exit(0);
 	}
 }
 
@@ -83,9 +77,14 @@ int main() {
 	struct sockaddr_in addr = {};
 	struct epoll_event ev, events[MAX_CLIENTS];
 	Client clients[MAX_CLIENTS] = {};
+	
+	int pipefd[2];
+	if (pipe(pipefd)) {
+		DEBUG("pipe does not work");
+		return 0;
+	}
 
 	bool shell = false;
-	signal(SIGUSR1, sig_handler);
 
 	init_clients(clients);
 	int sock = init_socket(&addr);
@@ -100,17 +99,23 @@ int main() {
 
 	ev.events = EPOLLIN;
 	ev.data.fd = sock;
-
 	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sock, &ev)) {
 		DEBUG("epoll_ctl does not work");
 		return 0;
 	}
 
+	ev.events = EPOLLIN;
+	ev.data.fd = pipefd[0];
+	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, pipefd[0], &ev)) {
+		DEBUG("epoll_ctl does not work");
+		return 0;
+	}
+
 	while (true) {
-		int nfds = epoll_wait(epollfd, events, MAX_CLIENTS, -1);
+		int nfds = epoll_wait(epollfd, events, 256, -1);
 		if (nfds == -1) {
-			DEBUG("epoll_wait does not work");
-			return 0;
+			perror("wait: ");
+			continue;
 		}
 
 		for (int n = 0; n < nfds; n++) {
@@ -124,6 +129,14 @@ int main() {
 				add_client(clients, newfd);
 				nb_clients++;
 				putstr(newfd, "Password: ");
+			} else if (fd == pipefd[0]) {
+				int disconnected_fd;
+				int r = read(pipefd[0], &disconnected_fd, sizeof(int));
+				if (r != sizeof(int))
+					continue;
+				Client *client = get_client(clients, disconnected_fd);
+				if (client)
+					disconnect_client(client, epollfd, &ev);
 			} else {
 				Client *client = get_client(clients, events[n].data.fd);
 				if (!client) {
@@ -140,7 +153,7 @@ int main() {
 					check_password(client, line);
 					if (client->logged && shell) {
 						shell = false;
-						sh(client, epollfd, &ev);
+						sh(client, pipefd[1]);
 						free(line);
 						continue;
 					}
@@ -156,5 +169,7 @@ int main() {
 		}
 	}
 
+	close(pipefd[0]);
+	close(pipefd[1]);
 	close(sock);
 }
