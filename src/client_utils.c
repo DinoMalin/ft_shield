@@ -1,5 +1,7 @@
 #include "ft_shield.h"
 
+extern int nb_clients;
+
 void init_clients(Client *clients) {
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		clients[i].fd = -1;
@@ -13,6 +15,7 @@ void add_client(Client *clients, int fd) {
 			return;
 		}
 	}
+	nb_clients++;
 }
 
 Client *get_client(Client *clients, int fd) {
@@ -31,4 +34,13 @@ void disconnect_client(Client *client, int epollfd, struct epoll_event *ev) {
 
 	client->fd = -1;
 	client->logged = false;
+	nb_clients--;
+}
+
+void refuse_client(int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev) {
+	int newfd = new_connection(sock, epollfd, addr, ev);
+	if (epoll_ctl(epollfd, EPOLL_CTL_DEL, newfd, ev) < 0)
+		DEBUG("epoll_ctl does not work");
+	close(newfd);
+	DEBUG("Client refused: Too much clients already\n");
 }

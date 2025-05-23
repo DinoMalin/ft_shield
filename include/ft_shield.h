@@ -12,7 +12,7 @@
 
 #define DEBUG printf
 #define MAX_CLIENTS 3
-#define PORT 6970
+#define PORT 6969
 #define HASHED_PASSWORD 1340397520672655617UL
 
 #define FNV_OFFSET 14695981039346656037UL
@@ -37,6 +37,7 @@ void init_clients(Client *clients);
 void add_client(Client *clients, int fd);
 Client *get_client(Client *clients, int fd);
 void disconnect_client(Client *client, int epollfd, struct epoll_event *ev);
+void refuse_client(int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev);
 
 int new_connection(
 	int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev);
