@@ -42,3 +42,27 @@ int new_connection(
 	DEBUG("New connection !\n");
 	return fd;
 }
+
+char *readline(int fd) {
+	char *cmd = ft_strdup("");
+	char buff[BUFFER_SIZE] = {};
+
+	while (1) {
+		int ret = recv(fd, buff, BUFFER_SIZE-1, MSG_DONTWAIT);
+		if (ret == 0) {
+			free(cmd);
+			return NULL;
+		} else if (ret > 0) {
+			buff[ret] = 0;
+			cmd = clean_join(cmd, buff);
+		} else {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				return cmd;
+			}
+			free(cmd);
+			return NULL;
+		}
+	}
+
+	return cmd;
+}

