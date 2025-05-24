@@ -1,3 +1,5 @@
 ft_shield
+trojan
+notatrojan
 *.o
 .env
