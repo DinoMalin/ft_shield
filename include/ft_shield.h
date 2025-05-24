@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include "libft.h"
+#include <dirent.h>
+#include <string.h>
 
 #define DEBUG printf
 #define MAX_CLIENTS 3

