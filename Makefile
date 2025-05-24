@@ -18,6 +18,9 @@ OBJS = $(addprefix $(OBJ_DIR), $(addsuffix .o, $(FILES)))
 
 all: $(NAME)
 
+debug: CFLAGS += -DDEBUG_MODE
+debug: $(NAME)
+
 bonus: all
 
 clean :

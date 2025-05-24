@@ -12,7 +12,12 @@
 #include <dirent.h>
 #include <string.h>
 
-#define DEBUG printf
+#ifdef DEBUG_MODE
+	#define DEBUG(format, ...) printf(format, ##__VA_ARGS__)
+#else
+	#define DEBUG(format, ...) {}
+#endif
+
 #define PUTSTR(fd, s) send(fd, s, ft_strlen(s), MSG_NOSIGNAL)
 #define MAX_CLIENTS 3
 #define PORT 6980
