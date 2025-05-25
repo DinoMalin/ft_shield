@@ -1,5 +1,6 @@
 ft_shield
 trojan
 notatrojan
+ft_shield.h
 *.o
 .env

