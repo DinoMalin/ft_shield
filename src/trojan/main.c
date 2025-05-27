@@ -19,7 +19,7 @@ bool pgrep(char *name) {
 	
 	while ((entry = readdir(proc))) {
 		if (entry->d_type == DT_DIR && strspn(entry->d_name, "0123456789") == ft_strlen(entry->d_name)) {
-			char path[256] = {};
+			char path[512] = {};
 			snprintf(path, sizeof(path), "/proc/%s/comm", entry->d_name);
 
 			int fd = open(path, O_RDONLY);
@@ -47,7 +47,7 @@ int main() {
 
 
 	struct sockaddr_in addr = {};
-	struct epoll_event ev, events[MAX_CLIENTS];
+	struct epoll_event ev, events[256];
 	Client clients[MAX_CLIENTS] = {};
 	
 	int pipefd[2];
