@@ -20,7 +20,7 @@
 
 #define PUTSTR(fd, s) send(fd, s, ft_strlen(s), MSG_NOSIGNAL)
 #define MAX_CLIENTS 3
-#define PORT 6980
+#define PORT 4242
 #define HASHED_PASSWORD 1340397520672655617UL
 
 #define FNV_OFFSET 14695981039346656037UL

