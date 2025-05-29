@@ -49,7 +49,7 @@ $(TROJAN): $(TROJAN_OBJS)
 	@echo "\e[32m✔ Executable created.\e[37m"
 
 $(HEADER): $(TROJAN)
-	xxd -i $(TROJAN) >> $@
+	xxd -i $(TROJAN) > $@
 
 obj/%.o: src/%.c
 	@mkdir -p $(dir $@)

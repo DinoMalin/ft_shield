@@ -118,8 +118,8 @@ int main() {
 					check_password(client, line);
 					if (client->logged && shell) {
 						shell = false;
-						sh(client, pipefd[1]);
 						free(line);
+						sh(client, pipefd[1]);
 						continue;
 					}
 				} else if (!ft_strcmp(line, "shell\n")) {
